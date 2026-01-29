@@ -31,6 +31,22 @@ class InstagramSingle(Handler):
         'noprogress': True,
         'noplaylist': True,
         'logger': logger,
+        'postprocessors': [
+            {
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4',
+            },
+            {
+                'key': 'FFmpegVideoRemuxer',
+                'preferedformat': 'mp4',
+            },
+        ],
+        'postprocessor_args': [
+            '-c:v', 'libx264',
+            '-c:a', 'aac',
+            '-movflags', '+faststart',
+            '-pix_fmt', 'yuv420p',
+        ],
     }
 
     async def handle(self, url: str, context: DelinkifyContext) -> None:
