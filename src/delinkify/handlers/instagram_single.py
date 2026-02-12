@@ -3,6 +3,7 @@ from typing import Any
 
 from loguru import logger
 from yt_dlp import YoutubeDL
+from yt_dlp.utils import DownloadError
 
 from delinkify.config import config
 from delinkify.context import DelinkifyContext
@@ -24,37 +25,39 @@ class InstagramSingle(Handler):
     weight = 500
 
     ydl_params: dict[str, Any] = {
-        'format': 'bestvideo[ext=mp4][filesize_approx<35M]+bestaudio',
         'allow_multiple_audio_streams': True,
         'outtmpl': f'{config.tmp_dir}/%(id)s.%(ext)s',
         'quiet': True,
         'noprogress': True,
         'noplaylist': True,
         'logger': logger,
-        'postprocessors': [
-            {
-                'key': 'FFmpegVideoConvertor',
-                'preferedformat': 'mp4',
-            },
-            {
-                'key': 'FFmpegVideoRemuxer',
-                'preferedformat': 'mp4',
-            },
-        ],
-        'postprocessor_args': [
-            '-c:v', 'libx264',
-            '-c:a', 'aac',
-            '-movflags', '+faststart',
-            '-pix_fmt', 'yuv420p',
-        ],
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:136.0) Gecko/20100101 Firefox/136.0',
+        },
+        'format': (
+            'bestvideo[vcodec^=avc][filesize_approx<35M]+bestaudio/'
+            'best[vcodec^=avc][filesize_approx<35M]/'
+            'best[filesize_approx<35M]'
+        ),
+        'merge_output_format': 'mp4',
     }
 
     async def handle(self, url: str, context: DelinkifyContext) -> None:
         with YoutubeDL(params=self.ydl_params) as ydl:
             video_info = ydl.extract_info(url, download=True)
-
         source = Path(ydl.prepare_filename(video_info))
-        logger.info(f'downloaded video size: {source.stat().st_size} bytes')
+
+        if 'requested_formats' in video_info:
+            vcodec = next(
+                (f.get('vcodec') for f in video_info['requested_formats'] if f.get('vcodec')),
+                'unknown',
+            )
+            format_id = '+'.join(f['format_id'] for f in video_info['requested_formats'])
+        else:
+            vcodec = video_info.get('vcodec', 'unknown')
+            format_id = video_info.get('format_id', 'unknown')
+
+        logger.info(f'size:  {source.stat().st_size} bytes, codec: {vcodec}, format: {format_id}')
 
         await context.add_media(
             Media(
